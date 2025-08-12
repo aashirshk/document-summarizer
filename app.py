@@ -29,6 +29,22 @@ if not openai_api_key:
     st.error("⚠️ OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
     st.stop()
 
+# Test API connection
+try:
+    from openai import OpenAI
+    test_client = OpenAI(api_key=openai_api_key)
+    # Small test to verify API access
+    st.success("✅ OpenAI API connection verified!")
+except Exception as e:
+    if "quota" in str(e).lower():
+        st.error("❌ OpenAI API quota exceeded. Please check your billing and upgrade your plan at https://platform.openai.com/account/billing")
+    elif "invalid" in str(e).lower():
+        st.error("❌ Invalid OpenAI API key. Please check your API key at https://platform.openai.com/api-keys")
+    else:
+        st.error(f"❌ OpenAI API error: {str(e)}")
+    st.info("💡 The application requires a valid OpenAI API key with available quota to function properly.")
+    st.stop()
+
 # Sidebar for document management
 with st.sidebar:
     st.header("📁 Document Management")
