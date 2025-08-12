@@ -73,8 +73,25 @@ with st.sidebar:
                         chunks = doc_processor.chunk_text(content)
                         
                         # Create embeddings and store
-                        embeddings = st.session_state.vector_store.create_embeddings(chunks)
-                        doc_id = st.session_state.vector_store.add_document(uploaded_file.name, chunks, embeddings)
+                        try:
+                            embeddings = st.session_state.vector_store.create_embeddings(chunks)
+                            doc_id = st.session_state.vector_store.add_document(uploaded_file.name, chunks, embeddings)
+                        except Exception as embed_error:
+                            if "quota" in str(embed_error).lower():
+                                st.error("💳 **OpenAI API Quota Exceeded**")
+                                st.markdown("""
+                                Your OpenAI API key has reached its usage limit. To continue using the RAG system:
+                                
+                                1. **Check your billing**: Visit [OpenAI Billing](https://platform.openai.com/account/billing)
+                                2. **Add payment method**: Add a credit card if you haven't already
+                                3. **Upgrade your plan**: Consider upgrading to a paid plan for higher limits
+                                4. **Check usage**: Monitor your API usage and set up billing alerts
+                                
+                                The free tier has very limited quota that gets used up quickly with document processing.
+                                """)
+                                st.stop()
+                            else:
+                                raise embed_error
                         
                         # Store document info
                         st.session_state.documents[uploaded_file.name] = {
