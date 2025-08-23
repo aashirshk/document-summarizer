@@ -1,41 +1,97 @@
 import numpy as np
 from typing import List, Tuple, Dict, Any
 import os
-from openai import OpenAI
+import requests
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
 import uuid
+import json
 
 class VectorStore:
-    """Manages document embeddings and similarity search."""
+    """Manages document embeddings and similarity search using Ollama."""
     
     def __init__(self):
-        self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.ollama_url = "http://localhost:11434"
+        self.embedding_model = "nomic-embed-text"  # Good embedding model for Ollama
         self.documents = {}  # document_id -> document_info
         self.embeddings = {}  # document_id -> list of embeddings
         self.chunks = {}     # document_id -> list of text chunks
+        self.tfidf_vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
+        self.tfidf_fitted = False
         
     def create_embeddings(self, text_chunks: List[str]) -> List[List[float]]:
-        """Create embeddings for text chunks using OpenAI's embedding model."""
+        """Create embeddings for text chunks using Ollama or TF-IDF fallback."""
         try:
-            embeddings = []
-            # Process chunks in batches to avoid rate limits
-            batch_size = 100
-            
-            for i in range(0, len(text_chunks), batch_size):
-                batch = text_chunks[i:i + batch_size]
-                
-                response = self.openai_client.embeddings.create(
-                    model="text-embedding-3-small",  # Using the newer embedding model
-                    input=batch
-                )
-                
-                batch_embeddings = [item.embedding for item in response.data]
-                embeddings.extend(batch_embeddings)
-            
-            return embeddings
+            # Try Ollama first
+            if self._check_ollama_available():
+                return self._create_ollama_embeddings(text_chunks)
+            else:
+                # Fallback to TF-IDF if Ollama is not available
+                return self._create_tfidf_embeddings(text_chunks)
             
         except Exception as e:
-            raise Exception(f"Error creating embeddings: {str(e)}")
+            # If everything fails, use TF-IDF as final fallback
+            try:
+                return self._create_tfidf_embeddings(text_chunks)
+            except:
+                raise Exception(f"Error creating embeddings: {str(e)}")
+    
+    def _check_ollama_available(self) -> bool:
+        """Check if Ollama is running and has the embedding model."""
+        try:
+            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                model_names = [model['name'] for model in models]
+                return any(self.embedding_model in name for name in model_names)
+            return False
+        except:
+            return False
+    
+    def _create_ollama_embeddings(self, text_chunks: List[str]) -> List[List[float]]:
+        """Create embeddings using Ollama."""
+        embeddings = []
+        for chunk in text_chunks:
+            data = {
+                "model": self.embedding_model,
+                "prompt": chunk
+            }
+            response = requests.post(f"{self.ollama_url}/api/embeddings", json=data)
+            if response.status_code == 200:
+                embedding = response.json()['embedding']
+                embeddings.append(embedding)
+            else:
+                raise Exception(f"Ollama embedding failed: {response.text}")
+        return embeddings
+    
+    def _create_tfidf_embeddings(self, text_chunks: List[str]) -> List[List[float]]:
+        """Create embeddings using TF-IDF as fallback."""
+        # Combine all existing chunks for fitting if not already done
+        all_chunks = text_chunks.copy()
+        
+        # Add existing chunks for better vocabulary
+        for doc_chunks in self.chunks.values():
+            all_chunks.extend(doc_chunks)
+        
+        if not self.tfidf_fitted or len(all_chunks) > 100:
+            self.tfidf_vectorizer.fit(all_chunks)
+            self.tfidf_fitted = True
+        
+        # Transform just the new chunks
+        tfidf_matrix = self.tfidf_vectorizer.transform(text_chunks)
+        try:
+            # Handle scipy sparse matrices
+            import scipy.sparse
+            if scipy.sparse.issparse(tfidf_matrix):
+                return tfidf_matrix.toarray().tolist()
+            else:
+                return tfidf_matrix.tolist()
+        except ImportError:
+            # Fallback if scipy not available
+            if hasattr(tfidf_matrix, 'toarray'):
+                return tfidf_matrix.toarray().tolist()
+            else:
+                return [[1.0] for _ in text_chunks]  # Simple fallback
     
     def add_document(self, document_name: str, chunks: List[str], embeddings: List[List[float]]) -> str:
         """Add a document with its chunks and embeddings to the store."""
@@ -68,11 +124,7 @@ class VectorStore:
         """Find the most similar chunks to the query."""
         try:
             # Create embedding for the query
-            query_response = self.openai_client.embeddings.create(
-                model="text-embedding-3-small",
-                input=[query]
-            )
-            query_embedding = query_response.data[0].embedding
+            query_embedding = self.create_embeddings([query])[0]
             
             # Collect all chunks with their embeddings and metadata
             all_chunks = []
@@ -128,11 +180,7 @@ class VectorStore:
                 return []
             
             # Create embedding for the query
-            query_response = self.openai_client.embeddings.create(
-                model="text-embedding-3-small",
-                input=[query]
-            )
-            query_embedding = query_response.data[0].embedding
+            query_embedding = self.create_embeddings([query])[0]
             
             # Get chunks and embeddings for this document
             doc_chunks = self.chunks[document_id]

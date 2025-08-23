@@ -8,13 +8,14 @@ This is a Context-Aware Multi-Document RAG (Retrieval-Augmented Generation) Syst
 
 Preferred communication style: Simple, everyday language.
 
-## Recent Changes (August 12, 2025)
+## Recent Changes (August 23, 2025)
 
-✓ Enhanced error handling for OpenAI API connection issues
-✓ Added API quota validation with user-friendly error messages
-✓ Fixed potential None type issues in response handling
-✓ Improved temporary file cleanup in error scenarios
-✓ System is fully functional and ready for document processing
+✓ **MAJOR UPDATE**: Replaced OpenAI with Llama models via Ollama
+✓ Eliminated API quota limits and costs - now completely free to run
+✓ Added TF-IDF fallback for when Ollama is not available
+✓ Smart error handling with graceful degradation
+✓ Updated UI to show Ollama connection status and available models
+✓ System works locally without any external API dependencies
 
 ## System Architecture
 
@@ -31,26 +32,27 @@ Preferred communication style: Simple, everyday language.
 
 ### Vector Storage and Retrieval
 - **In-Memory Vector Store**: Custom implementation using NumPy arrays and scikit-learn for similarity computation
-- **OpenAI Embeddings**: Uses `text-embedding-3-small` model for generating document embeddings
+- **Ollama/TF-IDF Embeddings**: Uses Ollama for Llama model embeddings or TF-IDF fallback for document embeddings
 - **Cosine Similarity Search**: Efficient semantic search across document chunks
 - **Document Indexing**: UUID-based document identification with metadata storage
 
 ### RAG System Design
 - **Dual Functionality**: Supports both document summarization and context-aware question answering
-- **GPT-4o Integration**: Uses the latest OpenAI model for high-quality text generation
+- **Llama Integration**: Uses local Llama models (3.1/3.2) via Ollama for high-quality text generation
 - **Context Window Management**: Automatic content truncation for large documents to fit model limits
 - **Temperature Control**: Low temperature (0.3) for consistent, factual responses
 
 ### Error Handling and Validation
-- **API Key Validation**: Environment variable checking with user-friendly error messages
+- **Ollama Connection Validation**: Local service checking with fallback to TF-IDF when unavailable
 - **File Type Validation**: Strict file format checking before processing
 - **Graceful Degradation**: Comprehensive error handling with informative user feedback
 
 ## External Dependencies
 
 ### AI Services
-- **OpenAI API**: Core dependency for embeddings (`text-embedding-3-small`) and text generation (`gpt-4o`)
-- **API Key Management**: Requires `OPENAI_API_KEY` environment variable
+- **Ollama (Optional)**: Local AI inference for Llama models (llama3.1, llama3.2) for embeddings and text generation
+- **TF-IDF Fallback**: Built-in text similarity using scikit-learn when Ollama is not available
+- **No API Keys Required**: Completely local and free to run
 
 ### Document Processing Libraries
 - **PyPDF2**: PDF text extraction and processing

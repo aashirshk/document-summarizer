@@ -23,27 +23,27 @@ st.set_page_config(
 st.title("📚 Context-Aware Multi-Document RAG System")
 st.markdown("Upload multiple documents and get AI-powered summaries and answers to your questions.")
 
-# Check for OpenAI API key
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    st.error("⚠️ OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
-    st.stop()
-
-# Test API connection
+# Check for Ollama connection
 try:
-    from openai import OpenAI
-    test_client = OpenAI(api_key=openai_api_key)
-    # Small test to verify API access
-    st.success("✅ OpenAI API connection verified!")
-except Exception as e:
-    if "quota" in str(e).lower():
-        st.error("❌ OpenAI API quota exceeded. Please check your billing and upgrade your plan at https://platform.openai.com/account/billing")
-    elif "invalid" in str(e).lower():
-        st.error("❌ Invalid OpenAI API key. Please check your API key at https://platform.openai.com/api-keys")
+    import requests
+    response = requests.get("http://localhost:11434/api/tags", timeout=5)
+    if response.status_code == 200:
+        models = response.json().get('models', [])
+        if models:
+            st.success(f"✅ Ollama connection verified! Found {len(models)} model(s) available.")
+            model_names = [model['name'] for model in models]
+            llama_models = [name for name in model_names if 'llama' in name.lower()]
+            if llama_models:
+                st.info(f"🦙 Llama models available: {', '.join(llama_models[:3])}")
+            else:
+                st.warning("⚠️ No Llama models found. Using TF-IDF fallback for embeddings and first available model for chat.")
+        else:
+            st.warning("⚠️ Ollama is running but no models are installed. Using TF-IDF fallback.")
     else:
-        st.error(f"❌ OpenAI API error: {str(e)}")
-    st.info("💡 The application requires a valid OpenAI API key with available quota to function properly.")
-    st.stop()
+        st.warning("⚠️ Cannot connect to Ollama. Using TF-IDF fallback for embeddings.")
+except Exception as e:
+    st.warning(f"⚠️ Ollama not available: {str(e)}. Using TF-IDF fallback for embeddings.")
+    st.info("💡 To use Llama models, install Ollama from https://ollama.ai and run 'ollama pull llama3.1' or 'ollama pull llama3.2'")
 
 # Sidebar for document management
 with st.sidebar:
@@ -61,6 +61,7 @@ with st.sidebar:
         for uploaded_file in uploaded_files:
             if uploaded_file.name not in st.session_state.documents:
                 with st.spinner(f"Processing {uploaded_file.name}..."):
+                    tmp_file_path = None
                     try:
                         # Save uploaded file temporarily
                         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
@@ -77,19 +78,22 @@ with st.sidebar:
                             embeddings = st.session_state.vector_store.create_embeddings(chunks)
                             doc_id = st.session_state.vector_store.add_document(uploaded_file.name, chunks, embeddings)
                         except Exception as embed_error:
-                            if "quota" in str(embed_error).lower():
-                                st.error("💳 **OpenAI API Quota Exceeded**")
+                            if "ollama" in str(embed_error).lower() or "connection" in str(embed_error).lower():
+                                st.warning("⚠️ **Ollama Connection Issue**")
                                 st.markdown("""
-                                Your OpenAI API key has reached its usage limit. To continue using the RAG system:
+                                Could not connect to Ollama for embeddings. Using TF-IDF fallback instead.
                                 
-                                1. **Check your billing**: Visit [OpenAI Billing](https://platform.openai.com/account/billing)
-                                2. **Add payment method**: Add a credit card if you haven't already
-                                3. **Upgrade your plan**: Consider upgrading to a paid plan for higher limits
-                                4. **Check usage**: Monitor your API usage and set up billing alerts
+                                For better results with Llama models:
+                                1. **Install Ollama**: Download from [ollama.ai](https://ollama.ai)
+                                2. **Start Ollama**: Run `ollama serve` in terminal
+                                3. **Pull a model**: Run `ollama pull llama3.1` or `ollama pull llama3.2`
+                                4. **Reload the page**: Refresh to connect to Ollama
                                 
-                                The free tier has very limited quota that gets used up quickly with document processing.
+                                The system will continue working with TF-IDF embeddings.
                                 """)
-                                st.stop()
+                                # Try TF-IDF fallback
+                                embeddings = st.session_state.vector_store._create_tfidf_embeddings(chunks)
+                                doc_id = st.session_state.vector_store.add_document(uploaded_file.name, chunks, embeddings)
                             else:
                                 raise embed_error
                         
@@ -102,7 +106,8 @@ with st.sidebar:
                         }
                         
                         # Clean up temporary file
-                        os.unlink(tmp_file_path)
+                        if tmp_file_path and os.path.exists(tmp_file_path):
+                            os.unlink(tmp_file_path)
                         
                         st.success(f"✅ {uploaded_file.name} processed successfully!")
                         
@@ -110,7 +115,7 @@ with st.sidebar:
                         st.error(f"❌ Error processing {uploaded_file.name}: {str(e)}")
                         # Clean up temporary file if it exists
                         try:
-                            if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
+                            if tmp_file_path and os.path.exists(tmp_file_path):
                                 os.unlink(tmp_file_path)
                         except:
                             pass

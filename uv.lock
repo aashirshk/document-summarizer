@@ -906,6 +906,7 @@ dependencies = [
     { name = "openai" },
     { name = "pypdf2" },
     { name = "python-docx" },
+    { name = "requests" },
     { name = "scikit-learn" },
     { name = "streamlit" },
 ]
@@ -917,6 +918,7 @@ requires-dist = [
     { name = "openai", specifier = ">=1.99.9" },
     { name = "pypdf2", specifier = ">=3.0.1" },
     { name = "python-docx", specifier = ">=1.2.0" },
+    { name = "requests", specifier = ">=2.32.4" },
     { name = "scikit-learn", specifier = ">=1.7.1" },
     { name = "streamlit", specifier = ">=1.48.0" },
 ]
