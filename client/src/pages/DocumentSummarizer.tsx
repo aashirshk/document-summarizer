@@ -13,7 +13,7 @@ export default function DocumentSummarizer() {
   useEffect(() => {
     // Create a new session when the component mounts
     createSession();
-  }, [createSession]);
+  }, []); // Empty dependency array to run only once on mount
 
   const handleProceedToQuery = () => {
     setShowQueryInterface(true);

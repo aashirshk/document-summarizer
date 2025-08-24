@@ -57,11 +57,13 @@ export function useSession() {
   });
 
   const createSession = useCallback(() => {
-    createSessionMutation.mutate();
-  }, [createSessionMutation]);
+    if (!createSessionMutation.isPending && !currentSessionId) {
+      createSessionMutation.mutate();
+    }
+  }, [createSessionMutation, currentSessionId]);
 
   const endSession = useCallback(() => {
-    if (currentSessionId) {
+    if (currentSessionId && !endSessionMutation.isPending) {
       endSessionMutation.mutate(currentSessionId);
     }
   }, [currentSessionId, endSessionMutation]);
