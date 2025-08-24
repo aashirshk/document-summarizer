@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Wand2, Download, Trash2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
@@ -20,30 +18,12 @@ interface OllamaHealth {
 
 export default function SessionSidebar({ session }: SessionSidebarProps) {
   const { toast } = useToast();
-  const [chunkSize, setChunkSize] = useState(1024);
-  const [chunkOverlap, setChunkOverlap] = useState(100);
-  const [similarityThreshold, setSimilarityThreshold] = useState([0.7]);
 
   const { data: ollamaHealth } = useQuery<OllamaHealth>({
     queryKey: ['/api/ollama/health'],
     refetchInterval: 30000, // Check every 30 seconds
   });
 
-  const updateSettingsMutation = useMutation({
-    mutationFn: async (settings: {
-      chunkSize?: number;
-      chunkOverlap?: number;
-      similarityThreshold?: number;
-    }) => {
-      await apiRequest('POST', `/api/sessions/${session.id}/rag-settings`, settings);
-    },
-    onSuccess: () => {
-      toast({
-        title: "Settings updated",
-        description: "RAG settings have been updated successfully",
-      });
-    },
-  });
 
   const summarizeMutation = useMutation({
     mutationFn: async () => {
@@ -67,13 +47,6 @@ export default function SessionSidebar({ session }: SessionSidebarProps) {
     },
   });
 
-  const handleSettingsUpdate = () => {
-    updateSettingsMutation.mutate({
-      chunkSize,
-      chunkOverlap,
-      similarityThreshold: similarityThreshold[0],
-    });
-  };
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -126,78 +99,6 @@ export default function SessionSidebar({ session }: SessionSidebarProps) {
         </div>
       </div>
 
-      {/* RAG Configuration */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6" data-testid="rag-settings">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4" data-testid="rag-settings-title">
-          RAG Settings
-        </h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Chunk Size
-            </label>
-            <Select
-              value={chunkSize.toString()}
-              onValueChange={(value) => setChunkSize(parseInt(value))}
-            >
-              <SelectTrigger data-testid="select-chunk-size">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="512">512 tokens</SelectItem>
-                <SelectItem value="1024">1024 tokens</SelectItem>
-                <SelectItem value="2048">2048 tokens</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Overlap
-            </label>
-            <Select
-              value={chunkOverlap.toString()}
-              onValueChange={(value) => setChunkOverlap(parseInt(value))}
-            >
-              <SelectTrigger data-testid="select-chunk-overlap">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="50">50 tokens</SelectItem>
-                <SelectItem value="100">100 tokens</SelectItem>
-                <SelectItem value="200">200 tokens</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Similarity Threshold
-            </label>
-            <Slider
-              value={similarityThreshold}
-              onValueChange={setSimilarityThreshold}
-              max={1}
-              min={0.1}
-              step={0.1}
-              className="w-full"
-              data-testid="slider-similarity-threshold"
-            />
-            <div className="flex justify-between text-xs text-slate-500 mt-1">
-              <span>0.1</span>
-              <span data-testid="threshold-value">{similarityThreshold[0]}</span>
-              <span>1.0</span>
-            </div>
-          </div>
-          <Button
-            onClick={handleSettingsUpdate}
-            disabled={updateSettingsMutation.isPending}
-            className="w-full"
-            variant="outline"
-            data-testid="button-update-settings"
-          >
-            Update Settings
-          </Button>
-        </div>
-      </div>
 
       {/* LLM Status */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6" data-testid="ollama-status">

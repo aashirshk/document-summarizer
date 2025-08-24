@@ -4,7 +4,7 @@ import AppHeader from "@/components/AppHeader";
 import DocumentUpload from "@/components/DocumentUpload";
 import DocumentList from "@/components/DocumentList";
 import SessionSidebar from "@/components/SessionSidebar";
-import QueryInterface from "@/components/QueryInterface";
+
 
 export default function DocumentSummarizer() {
   const { session, createSession, endSession } = useSession();
@@ -49,9 +49,7 @@ export default function DocumentSummarizer() {
           </div>
         </div>
 
-        {showQueryInterface && (
-          <QueryInterface sessionId={session.id} />
-        )}
+        
       </main>
     </div>
   );

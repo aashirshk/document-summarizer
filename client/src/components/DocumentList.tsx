@@ -219,15 +219,14 @@ export default function DocumentList({ sessionId, onProceedToQuery }: DocumentLi
               <Progress value={progressPercentage} className="h-2" data-testid="progress-bar" />
             </div>
           )}
-
-          <div className="mt-6 flex justify-center">
+          <div className="mt-6 flex justify-center">         
             <Button
               onClick={onProceedToQuery}
               disabled={!allProcessed || totalCount === 0}
               className="px-8 py-3 bg-primary text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               data-testid="button-proceed-to-query"
             >
-              PROCEED TO QUERY
+              PROCEED TO QUERY Sandip part
             </Button>
           </div>
         </>

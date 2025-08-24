@@ -190,19 +190,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Session not found" });
       }
 
+      // Check if any documents are still processing
+      const documents = await storage.getDocumentsBySession(sessionId);
+      const processingDocs = documents.filter(doc => doc.status === "processing");
+      
+      if (processingDocs.length > 0) {
+        return res.status(400).json({ 
+          message: `Please wait - ${processingDocs.length} document(s) are still being processed` 
+        });
+      }
+
+      const processedDocs = documents.filter(doc => doc.status === "processed");
+      if (processedDocs.length === 0) {
+        return res.json({
+          response: "No processed documents found. Please upload and wait for documents to be processed before querying.",
+          sources: []
+        });
+      }
+
       // Search for relevant document chunks
       const searchResults = await ragService.searchSimilar(query, sessionId, 5);
       
       if (searchResults.length === 0) {
         return res.json({
-          response: "I couldn't find relevant information in the uploaded documents to answer your question.",
+          response: "I couldn't find relevant information in the uploaded documents to answer your question. Try rephrasing your query or uploading more relevant documents.",
           sources: []
         });
       }
 
       // Get response from Ollama
       const context = searchResults.map(result => result.chunk);
-      const response = await ollamaService.queryDocuments({ query, context });
+      console.log('Attempting to query Ollama with context length:', context.length);
+      let response;
+      try {
+        response = await ollamaService.queryDocuments({ query, context });
+        console.log('Ollama response received successfully');
+      } catch (ollamaError) {
+        console.error('Ollama query failed:', ollamaError);
+        // Fallback response when Ollama is not available
+        response = `Based on the uploaded documents, I found relevant information related to your query: "${query}". However, the AI service is currently unavailable. The search found ${searchResults.length} relevant sections from your documents.`;
+      }
 
       // Create query record
       const queryData = {
@@ -223,6 +250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sources: queryRecord.sources
       });
     } catch (error) {
+      console.error('Query error:', error);
       res.status(500).json({ 
         message: error instanceof Error ? error.message : "Failed to process query" 
       });
@@ -291,11 +319,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 // Async document processing function
 async function processDocumentAsync(documentId: string, filePath: string, mimeType: string) {
   try {
+    console.log(`Starting to process document ${documentId} with type ${mimeType}`);
+    
     // Update status to processing
     await storage.updateDocument(documentId, { status: "processing" });
 
     // Process the document
     const processed = await documentProcessor.processDocument(filePath, mimeType);
+    console.log(`Document ${documentId} processed successfully. Text length: ${processed.text.length}, Chunks: ${processed.chunks.length}`);
 
     // Update document with processed data
     await storage.updateDocument(documentId, {
@@ -308,6 +339,7 @@ async function processDocumentAsync(documentId: string, filePath: string, mimeTy
     const document = await storage.getDocument(documentId);
     if (document) {
       await ragService.indexDocuments([document]);
+      console.log(`Document ${documentId} indexed for RAG successfully`);
     }
 
   } catch (error) {
