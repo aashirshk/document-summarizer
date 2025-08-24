@@ -73,6 +73,7 @@ export class MemStorage implements IStorage {
     const document: Document = {
       ...insertDocument,
       id,
+      status: insertDocument.status || "uploaded",
       uploadedAt: new Date(),
       processedAt: null,
       extractedText: null,
@@ -141,6 +142,8 @@ export class MemStorage implements IStorage {
     const query: Query = {
       ...insertQuery,
       id,
+      response: insertQuery.response || null,
+      sources: Array.isArray(insertQuery.sources) ? insertQuery.sources : [],
       createdAt: new Date(),
     };
     this.queries.set(id, query);
