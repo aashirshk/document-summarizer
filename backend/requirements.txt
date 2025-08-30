@@ -1,0 +1,9 @@
+accelerate==1.10.0
+inquirerpy==0.3.4
+pip-chill==1.0.3
+pypdf==6.0.0
+python-dotenv==1.1.1
+sentencepiece==0.2.1
+torchaudio==2.8.0
+torchvision==0.23.0
+transformers==4.55.4
