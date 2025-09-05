@@ -1,0 +1,14 @@
+bitarray==3.7.1
+chromadb==1.0.20
+httptools==0.6.4
+ollama==0.5.3
+pandas==2.3.2
+pillow==11.3.0
+pip-chill==1.0.3
+pycryptodome==3.23.0
+pypdf==6.0.0
+pypdf2==3.0.1
+python-dotenv==1.1.1
+uvloop==0.21.0
+watchfiles==1.1.0
+websockets==15.0.1

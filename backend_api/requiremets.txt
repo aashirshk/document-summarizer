@@ -1,0 +1,11 @@
+chromadb==1.0.20
+fastapi==0.116.1
+httptools==0.6.4
+openai==1.106.1
+pip-chill==1.0.3
+pypdf2==3.0.1
+python-dotenv==1.1.1
+python-multipart==0.0.20
+uvloop==0.21.0
+watchfiles==1.1.0
+websockets==15.0.1
