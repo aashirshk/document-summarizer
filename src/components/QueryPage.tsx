@@ -1,54 +1,82 @@
 import { useState } from "react";
+import Footer from "./Footer";
 
 export default function QueryPage() {
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState("");
 
   const handleGenerateResponse = () => {
-    setResponse("Based on the uploaded documents, the findings indicate improvements in efficiency with a 45% accuracy increase.");
+    setResponse(`
+Based on the uploaded documents, the findings indicate improvements in efficiency 
+with a 45% accuracy increase.
+
+"The implementation resulted in measurable performance gains across all test scenarios."
+Source: research_paper.pdf (p.12)
+
+Generated from 3 documents | 15 chunks | Processing time: 0.8s
+    `);
   };
 
   return (
-    <div className="w-full max-w-5xl bg-white shadow-lg p-6 mt-12 grid grid-cols-2 gap-6">
-      {/* Query Section */}
-      <div>
-        <h2 className="text-lg font-semibold">Query Input</h2>
-        <textarea 
-          className="w-full border p-2 rounded mt-2"
-          rows={4}
-          placeholder="Enter your question or request..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <div className="flex gap-2 mt-3">
-          <button className="border px-3 py-1 rounded hover:bg-gray-100">Summary</button>
-          <button className="border px-3 py-1 rounded hover:bg-gray-100">Question</button>
-          <button className="border px-3 py-1 rounded hover:bg-gray-100">Comparison</button>
-        </div>
-        <button 
-          className="mt-4 bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
-          onClick={handleGenerateResponse}
-        >
-          GENERATE RESPONSE
-        </button>
+    <>
+    <div className="min-h-screen bg-gray-100 flex justify-center p-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl">
+        
+        {/* Query Section */}
+        <div className="bg-white shadow-md rounded-xl p-6">
+          <h2 className="text-lg font-semibold mb-3">Query Input</h2>
+          
+          <textarea
+            className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-black focus:outline-none"
+            rows={5}
+            placeholder="Enter your question or request..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
 
-        <div className="mt-6">
-          <h3 className="font-medium">Recent Queries</h3>
-          <ul className="list-disc ml-6 text-gray-600 mt-2">
-            <li>What are the main findings?</li>
-            <li>Compare methodologies used</li>
-            <li>Summarize conclusions</li>
-          </ul>
-        </div>
-      </div>
+          {/* Option Buttons */}
+          <div className="flex gap-3 mt-4">
+            <button className="px-4 py-2 text-sm rounded-lg bg-blue-500 text-white hover:scale-105 hover:from-blue-700 hover:to-indigo-700 transition transform cursor-pointer">SUMMARY</button>
+            <button className="px-4 py-2 text-sm rounded-lg border  bg-blue-500 hover:scale-105 text-white hover:from-blue-700 hover:to-indigo-700 transition transform cursor-pointer">QUESTION</button>
+            <button className="px-4 py-2 text-sm rounded-lg border bg-blue-500 hover:scale-105 text-white hover:from-blue-700 hover:to-indigo-700 transition transform cursor-pointer">COMPARISON</button>
+          </div>
 
-      {/* Response Section */}
-      <div>
-        <h2 className="text-lg font-semibold">Response</h2>
-        <div className="border p-4 mt-2 rounded bg-gray-50 min-h-[200px]">
-          {response ? response : "Generated response will appear here..."}
+          {/* Generate Button */}
+          <button
+            onClick={handleGenerateResponse}
+            className="w-full mt-5 py-3 rounded-lg bg-green-700 text-white font-medium hover:bg-green-500 transition"
+          >
+            GENERATE RESPONSE
+          </button>
+
+          {/* Recent Queries */}
+          <div className="mt-6">
+            <h3 className="text-md font-semibold mb-2">FAQs</h3>
+            <div className="space-y-2">
+              <button className="w-full text-left px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm">
+                What are the main findings?
+              </button>
+              <button className="w-full text-left px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm">
+                Compare methodologies used
+              </button>
+              <button className="w-full text-left px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm">
+                Summarize conclusions
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* Response Section */}
+        <div className="bg-white shadow-md rounded-xl p-6">
+          <h2 className="text-lg font-semibold mb-3">Response</h2>
+          <div className="border border-gray-200 bg-gray-50 rounded-lg p-4 min-h-[250px] whitespace-pre-line text-sm text-gray-800">
+            {response ? response : "Your response will appear here..."}
+          </div>
+        </div>
+
       </div>
     </div>
+    <Footer />
+    </>
   );
 }

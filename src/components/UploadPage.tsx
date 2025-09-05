@@ -31,7 +31,7 @@ export default function UploadPage({ onProceed }: { onProceed: () => void }) {
       <button 
         className={`mt-6 px-6 py-2 rounded ${documents.length === 0 ? "bg-gray-400 cursor-not-allowed" : "bg-black text-white hover:bg-gray-800"}`}
         onClick={onProceed}
-        disabled={documents.length === 0}
+        //disabled={documents.length === 0}
       >
         PROCEED TO QUERY
       </button>
