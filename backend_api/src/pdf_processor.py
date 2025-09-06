@@ -1,9 +1,9 @@
 import PyPDF2
 import uuid
-from typing import List, Dict
+from typing import List, Dict, Optional
 
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 150
 
 
 class ImprovedPDFProcessor:
@@ -21,7 +21,7 @@ class ImprovedPDFProcessor:
                 print(f"Error reading page: {e}")
         return text
 
-    def create_chunks(self, text: str, filename: str) -> List[Dict]:
+    def create_chunks(self, text: str, filename: str, namespace: Optional[str] = None) -> List[Dict]:
         chunks = []
         start = 0
         chunk_count = 0
@@ -42,7 +42,11 @@ class ImprovedPDFProcessor:
             chunks.append({
                 "id": str(uuid.uuid4()),
                 "text": chunk,
-                "metadata": {"source": filename, "chunk_index": chunk_count},
+                "metadata": {
+                    "source": filename,
+                    "chunk_index": chunk_count,
+                    "namespace": namespace or "default",
+                },
             })
 
             start = end

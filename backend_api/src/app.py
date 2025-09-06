@@ -89,7 +89,7 @@ def process_job(tmp_path: str, filename: str, job_id: str):
 
         _set_progress(job_id, stage="chunking", progress=35, message="Creating chunks")
         processor = ImprovedPDFProcessor()
-        chunks = processor.create_chunks(text, filename)
+        chunks = processor.create_chunks(text, filename, namespace=job_id)
 
         _set_progress(job_id, stage="embedding", progress=50, message=f"Embedding {len(chunks)} chunks")
 
@@ -156,7 +156,7 @@ def process_multi_job(file_paths: List[Tuple[str, str]], job_id: str):
 
                 # ---------- Chunk phase (build chunks per file) ----------
                 _set_progress(job_id, stage="chunking", progress=35, message=f"Chunking {filename}")
-                chunks = processor.create_chunks(text, filename)
+                chunks = processor.create_chunks(text, filename, namespace=job_id)
                 all_chunks.extend(chunks)
 
             finally:
@@ -277,21 +277,62 @@ def progress_json(jobId: str):
 
 @app.post("/query")
 async def query_documents(req: QueryRequest):
-    results = rag_system.query_documents(req.question, req.n_results)
+    print("Job Id is: ")
+    print(req.jobId)
+    results = rag_system.query_documents(req.question, req.n_results, namespace=req.jobId)
     docs = results.get("documents", [[]])[0]
     answer = rag_system.generate_response(req.question, docs[0] if docs else "")
     return {"answer": answer, "sources": docs}
 
+# @app.post("/query_multi")
+# async def query_documents_multi(req: QueryMultiRequest):
+#     """
+#     Retrieve top-K passages across *all* indexed PDFs and synthesize one coherent paragraph.
+#     """
+#     top_passages = rag_system.query_documents_multi(req.question, n_results=req.n_results, namespace=req.jobId)
+#     out = rag_system.generate_response_multi(
+#         query=req.question,
+#         passages=top_passages,
+#         max_context_chars=req.max_context_chars,
+#         dedupe_by_source=req.dedupe_by_source,
+#     )
+#     return out
+
 @app.post("/query_multi")
 async def query_documents_multi(req: QueryMultiRequest):
     """
-    Retrieve top-K passages across *all* indexed PDFs and synthesize one coherent paragraph.
+    Retrieve top-K passages across *all* indexed PDFs (scoped by jobId/namespace)
+    and synthesize one coherent paragraph with citations.
     """
-    top_passages = rag_system.query_documents_multi(req.question, n_results=req.n_results)
+    top_passages = rag_system.query_documents_multi(
+        req.question,
+        n_results=req.n_results,
+        namespace=req.jobId,
+    )
+
+    # Normalize to triples (text, meta, score)
+    passages_scored = []
+    if top_passages:
+        if isinstance(top_passages[0], tuple) and len(top_passages[0]) == 3:
+            passages_scored = top_passages
+        else:
+            passages_scored = [(t, m, 0.5) for (t, m) in top_passages]
+
+    # NEW: if everything is weak, build a coverage pack (diverse per-source context)
+    scores = [s for *_ , s in passages_scored] if passages_scored else []
+    if not passages_scored or all(s < 0.35 for s in scores):  # NEW thresholds for broad queries
+        passages_scored = rag_system.coverage_pack(
+            namespace=req.jobId, total=max(req.n_results * 6, 36), per_source=2
+        )
+
+    if not passages_scored:
+        return {"answer": "I couldn't find relevant passages in the indexed documents.", "sources": []}
+
     out = rag_system.generate_response_multi(
         query=req.question,
-        passages=top_passages,
-        max_context_chars=req.max_context_chars,
-        dedupe_by_source=req.dedupe_by_source,
+        passages_scored=passages_scored,
+        max_context_chars=req.max_context_chars or 12000,
+        dedupe_by_source=True if req.dedupe_by_source is None else req.dedupe_by_source,
     )
     return out
+

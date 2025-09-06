@@ -7,6 +7,8 @@ import chromadb
 from chromadb.utils import embedding_functions
 from openai import OpenAI
 from dotenv import load_dotenv
+import cohere
+from typing import Tuple
 
 load_dotenv()
 
@@ -20,6 +22,7 @@ class ImprovedRAGSystem:
         self.llm_model = llm_model
         self.db = chromadb.PersistentClient(path="./chroma_db")
         self.setup_embedding_function()
+        self.cohere = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY")) if os.getenv("COHERE_API_KEY") else None
 
         if llm_model == "openai":
             self.llm = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -82,21 +85,35 @@ class ImprovedRAGSystem:
 
         return processed
 
-    def query_documents(self, query, n_results=3):
-        return self.collection.query(query_texts=[query], n_results=n_results)
+    def query_documents(self, query: str, n_results: int = 3, namespace: Optional[str] = None):
+        where = {"namespace": namespace} if namespace else None
+        return self.collection.query(query_texts=[query], n_results=n_results, where=where)
 
-    def query_documents_multi(self, query: str, n_results: int = 6) -> List[Tuple[str, Dict]]:
-        """
-        Returns a flat list of (document_text, metadata) tuples for the top results.
-        """
-        res = self.collection.query(query_texts=[query], n_results=n_results)
+    def query_documents_multi(self, query: str, n_results: int = 6, namespace: Optional[str] = None):
+        where = {"namespace": namespace} if namespace else None
+        # NEW: recall more for headroom (precision improves after rerank)
+        recall_k = max(n_results * 5, 50)  # NEW
+        res = self.collection.query(query_texts=[query], n_results=recall_k, where=where)
         docs = res.get("documents", [[]])[0] if res else []
         metas = res.get("metadatas", [[]])[0] if res else []
+        passages = list(zip(docs, metas))
 
-        out: List[Tuple[str, Dict]] = []
-        for d, m in zip(docs, metas):
-            out.append((d, m or {}))
-        return out
+        # Rerank (keep your _rerank_with_cohere as you already added)
+        ranked = self._rerank_with_cohere(query, passages, top_k=max(n_results * 2, 12))  # NEW
+
+        # NEW: cap per source so one long PDF doesn't dominate
+        seen: Dict[str, int] = {}
+        capped: List[Tuple[str, Dict, float]] = []
+        for t, m, s in ranked:
+            src = (m or {}).get("source", "unknown")
+            if seen.get(src, 0) >= 2:  # at most 2 chunks per source (tune if needed)
+                continue
+            seen[src] = seen.get(src, 0) + 1
+            capped.append((t, m, s))
+            if len(capped) >= n_results:
+                break
+        return capped
+
 
     
 
@@ -119,64 +136,116 @@ Answer:"""
         )
         return response.choices[0].message.content
 
-    def generate_response_multi(
-    self,
-    query: str,
-    passages: List[Tuple[str, Dict]],
-    max_context_chars: int = 12000,
-    dedupe_by_source: bool = True,
-) -> Dict:
-        """
-        passages: list of (text, metadata={'source': filename, ...})
-        Returns dict: {"answer": str, "sources": List[Dict]}
-        """
-        # Deduplicate per source if requested (keep strongest/top passage per file)
+    def generate_response_multi(self, query: str, passages_scored: List[Tuple[str, Dict, float]],
+                            max_context_chars: int = 12000, dedupe_by_source: bool = True) -> Dict:
         if dedupe_by_source:
             best_per_source = {}
-            for text, meta in passages:
+            for text, meta, score in passages_scored:
                 src = (meta or {}).get("source", "unknown")
                 if src not in best_per_source:
-                    best_per_source[src] = (text, meta)
-            passages = list(best_per_source.values())
+                    best_per_source[src] = (text, meta, score)
+            passages_scored = list(best_per_source.values())
 
-        # Build a bounded context string, labeled per source
-        labeled_chunks = []
-        total_len = 0
-        used_sources = []
+        labeled_blocks = []
+        used = []
+        total = 0
+        for i, (text, meta, score) in enumerate(passages_scored, start=1):
+            label = f"[{i}]"
+            block = f"{label} {text.strip()}\n"
+            if total + len(block) > max_context_chars: break
+            labeled_blocks.append(block)
+            total += len(block)
+            used.append({"label": label, "source": (meta or {}).get("source", "unknown"),
+                        "chunk_index": (meta or {}).get("chunk_index"), "namespace": (meta or {}).get("namespace"),
+                        "score": round(float(score), 3)})
 
-        for text, meta in passages:
-            src = (meta or {}).get("source", "unknown")
-            label = f"[Source: {src}]"
-            block = f"{label}\n{text.strip()}\n"
-            if total_len + len(block) > max_context_chars:
-                break
-            labeled_chunks.append(block)
-            total_len += len(block)
-            used_sources.append({"source": src, **(meta or {})})
-
-        context = "\n\n".join(labeled_chunks) if labeled_chunks else "N/A"
+        legend = "\n".join(f"{u['label']} {u['source']} (score={u['score']})" for u in used)
+        context = "\n".join(labeled_blocks) if labeled_blocks else "N/A"
 
         prompt = f"""You are synthesizing an answer using multiple documents.
-    Write a single coherent paragraph (no bullet points). If the provided context
-    doesn't contain the answer, say so clearly.
+    Write ONE coherent paragraph. Cite with the numeric labels right after the relevant sentences (e.g., [1], [2][3]).
+    If the context doesn't contain the answer, say so.
 
-    Context (multiple labeled excerpts):
+    Source labels (with relevance scores):
+    {legend}
+
+    Context:
     {context}
 
-    User question: {query}
+    Question: {query}
 
-    Final answer (one paragraph):"""
+    Final answer (with [n] citations):"""
 
         response = self.llm.chat.completions.create(
             model="gpt-4o-mini" if self.llm_model == "openai" else "llama3.2",
             messages=[
-                {"role": "system", "content": "You are a concise, factual AI that writes in plain English."},
+                {"role": "system", "content": "You are concise and always add [n] citations to claims grounded in the context."},
                 {"role": "user", "content": prompt},
             ],
             timeout=60,
         )
-        answer = response.choices[0].message.content
-        return {"answer": answer, "sources": used_sources}
+        return {"answer": response.choices[0].message.content, "sources": used}
+
+
+    def _rerank_with_cohere(self, query: str, passages: List[Tuple[str, Dict]], top_k: int) -> List[Tuple[str, Dict, float]]:
+        """
+        Input: [(text, meta), ...] from Chroma
+        Output: [(text, meta, score)] sorted desc by score
+        """
+        if not self.cohere or not passages:
+            # Fallback: keep original order with flat scores
+            return [(t, m, 0.5) for (t, m) in passages[:top_k]]
+
+        docs = [t for (t, _) in passages]
+        try:
+            resp = self.cohere.rerank(model="rerank-v3.5", query=query, documents=docs, top_n=min(top_k, len(docs)))
+            ranked = []
+            for r in resp.results:
+                text, meta = passages[r.index]
+                ranked.append((text, meta, float(r.relevance_score)))
+            return ranked
+        except Exception as e:
+            print(f"[rerank] cohere error: {e}")
+            return [(t, m, 0.5) for (t, m) in passages[:top_k]]
+    
+    def coverage_pack(
+        self,
+        namespace: Optional[str],
+        total: int = 40,
+        per_source: int = 2,
+    ) -> List[Tuple[str, Dict, float]]:
+        """
+        Return diverse chunks across sources for summarization,
+        with neutral scores so the UI can still show badges.
+        """
+        where = {"namespace": namespace} if namespace else None
+        # bias retrieval to overview sections
+        coverage_query = (
+            "overview abstract introduction conclusion summary goals methods findings limitations"
+        )
+        res = self.collection.query(  # NEW
+            query_texts=[coverage_query],
+            n_results=max(total, 40),
+            where=where,
+        )
+        docs = res.get("documents", [[]])[0] if res else []
+        metas = res.get("metadatas", [[]])[0] if res else []
+        pairs = list(zip(docs, metas))
+
+        by_src: Dict[str, List[Tuple[str, Dict]]] = {}  # NEW
+        for t, m in pairs:
+            src = (m or {}).get("source", "unknown")
+            by_src.setdefault(src, [])
+            if len(by_src[src]) < per_source:
+                by_src[src].append((t, m))
+
+        out: List[Tuple[str, Dict, float]] = []  # NEW
+        for src, items in by_src.items():
+            for t, m in items:
+                out.append((t, m, 0.45))  # neutral-ish score == “Medium”
+                if len(out) >= total:
+                    return out
+        return out
 
 
 rag_system = ImprovedRAGSystem()
